@@ -38,7 +38,7 @@ export function useVoice({ onTranscript, onStatus, silenceMs = 1800 }: UseVoiceO
   const stoppingRef = useRef(false);
 
   const teardown = useCallback(() => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     silenceSince.current = null;
     amplitudeRef.current = 0;
@@ -100,14 +100,35 @@ export function useVoice({ onTranscript, onStatus, silenceMs = 1800 }: UseVoiceO
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-      });
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        });
+      } catch (micError) {
+        teardown();
+        setStatus("error");
+        setError(
+          micError instanceof Error && micError.name === "NotAllowedError"
+            ? "Microphone permission denied."
+            : "Could not open the microphone."
+        );
+        return;
+      }
+      if (!stream) throw new Error("Failed to get media stream.");
       streamRef.current = stream;
 
       const AudioCtx =
         window.AudioContext ??
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+      if (!AudioCtx) {
+        teardown();
+        setStatus("error");
+        setError("AudioContext not supported in this browser.");
+        return;
+      }
+
       const context = new AudioCtx();
       contextRef.current = context;
 

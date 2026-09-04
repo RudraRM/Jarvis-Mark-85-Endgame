@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import type { VoiceStatus } from "@/lib/useVoice";
 
 const FOCUS_RING =
@@ -18,10 +18,14 @@ interface Props {
   status: VoiceStatus;
   amplitudeRef: React.MutableRefObject<number>;
   onToggle: () => void;
+  onStatusChange?: (status: VoiceStatus) => void;
 }
 
 /** Primary control: voice is the default input mode for this HUD. */
-export default function MicButton({ status, amplitudeRef, onToggle }: Props) {
+const MicButton = forwardRef<HTMLButtonElement, Props>(function MicButton(
+  { status, amplitudeRef, onToggle, onStatusChange },
+  ref
+) {
   const ringRef = useRef<HTMLSpanElement>(null);
   const [level, setLevel] = useState(0);
 
@@ -36,12 +40,17 @@ export default function MicButton({ status, amplitudeRef, onToggle }: Props) {
     return () => cancelAnimationFrame(frame);
   }, [amplitudeRef]);
 
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
+
   const listening = status === "listening";
   const busy = status === "transcribing";
 
   return (
     <div className="flex flex-col items-center gap-2">
       <button
+        ref={ref}
         type="button"
         onClick={onToggle}
         aria-pressed={listening}
@@ -81,4 +90,6 @@ export default function MicButton({ status, amplitudeRef, onToggle }: Props) {
       <span className="text-[10px] tracking-[0.28em] text-cyan-300/70">{LABEL[status]}</span>
     </div>
   );
-}
+});
+
+export default MicButton;

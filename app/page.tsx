@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ConversationPanel from "@/components/ConversationPanel";
 import FullscreenButton from "@/components/FullscreenButton";
@@ -36,9 +37,24 @@ export default function Page() {
   const [typed, setTyped] = useState("");
   const [time, setTime] = useState("");
   const [degraded, setDegraded] = useState(false);
+  const narrationTimeoutRef = useRef<number | null>(null);
 
   const turnsRef = useRef<ConversationTurn[]>([]);
   turnsRef.current = turns;
+
+  const updateNarration = useCallback((message: string) => {
+    if (narrationTimeoutRef.current) clearTimeout(narrationTimeoutRef.current);
+    narrationTimeoutRef.current = window.setTimeout(() => {
+      setNarration(message);
+      narrationTimeoutRef.current = null;
+    }, 120);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (narrationTimeoutRef.current) clearTimeout(narrationTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const tick = () => setTime(clock());
@@ -139,9 +155,17 @@ export default function Page() {
     [dispatch, pushLog],
   );
 
+  const micButtonRef = useRef<HTMLButtonElement>(null);
+
+  const onVoiceDone = useCallback(() => {
+    if (micButtonRef.current && !micButtonRef.current.matches(":focus")) {
+      micButtonRef.current.focus();
+    }
+  }, []);
+
   const { status, error, amplitudeRef, toggle } = useVoice({
     onTranscript,
-    onStatus: setNarration,
+    onStatus: updateNarration,
   });
 
   // Voice is the default channel: M toggles the microphone from anywhere.
@@ -171,13 +195,14 @@ export default function Page() {
   const preset = GLOW_PRESETS[glow];
 
   return (
-    <main className="relative h-screen w-screen overflow-hidden">
+    <ErrorBoundary>
+      <main className="relative h-screen w-screen overflow-hidden">
       <CoreCanvas
         amplitudeRef={amplitudeRef}
         glow={glow}
         spinMultiplier={spin}
         scale={scale}
-        onManipulate={setNarration}
+        onManipulate={updateNarration}
       />
 
       {/* Screen-reader narration of the core and the agent. */}
@@ -220,7 +245,13 @@ export default function Page() {
           </div>
 
           <div className="pointer-events-auto flex flex-col items-center gap-3">
-            <MicButton status={status} amplitudeRef={amplitudeRef} onToggle={toggle} />
+            <MicButton
+              ref={micButtonRef}
+              status={status}
+              amplitudeRef={amplitudeRef}
+              onToggle={toggle}
+              onStatusChange={(s) => s === "idle" && onVoiceDone()}
+            />
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -261,6 +292,7 @@ export default function Page() {
           </div>
         </div>
       </div>
-    </main>
+      </main>
+    </ErrorBoundary>
   );
 }

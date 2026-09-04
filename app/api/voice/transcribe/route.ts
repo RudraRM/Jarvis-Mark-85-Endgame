@@ -61,6 +61,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No audio payload received." }, { status: 400 });
   }
 
+  const MAX_AUDIO_SIZE = 25 * 1024 * 1024; // 25 MB
+  if (audio.size > MAX_AUDIO_SIZE) {
+    return NextResponse.json(
+      { error: `Audio file exceeds ${MAX_AUDIO_SIZE / 1024 / 1024}MB limit.` },
+      { status: 413 }
+    );
+  }
+
   const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) {
     // Keep the whole pipeline demoable without credentials.

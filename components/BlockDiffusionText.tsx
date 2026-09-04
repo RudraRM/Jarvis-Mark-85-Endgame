@@ -116,7 +116,6 @@ export default function BlockDiffusionText({ text, animate = true, onSettled }: 
             transition={{ duration: 0.28, ease: "easeOut" }}
             className={isResolved ? "" : "text-cyan-400/70"}
             style={{ display: "inline-block", willChange: "filter, opacity" }}
-            data-noise={noise}
           >
             {isResolved ? block : scrambleWord(block.length)}
           </motion.span>

@@ -140,8 +140,13 @@ export default function JarvisCore({
     };
 
     const onPointerDown = (event: PointerEvent) => {
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch (e) {
+        console.warn("Pointer capture failed:", e);
+        return;
+      }
       dragging.current = true;
-      canvas.setPointerCapture(event.pointerId);
       lastPointer.current = { x: event.clientX, y: event.clientY, t: performance.now() };
       velocity.current.multiplyScalar(0.2);
       canvas.style.cursor = "grabbing";
@@ -163,8 +168,12 @@ export default function JarvisCore({
     const onPointerUp = (event: PointerEvent) => {
       if (!dragging.current) return;
       dragging.current = false;
-      if (canvas.hasPointerCapture(event.pointerId)) {
-        canvas.releasePointerCapture(event.pointerId);
+      try {
+        if (canvas.hasPointerCapture(event.pointerId)) {
+          canvas.releasePointerCapture(event.pointerId);
+        }
+      } catch (e) {
+        console.warn("Pointer capture error:", e);
       }
       canvas.style.cursor = "grab";
 

@@ -87,10 +87,16 @@ export async function POST(request: Request) {
       return respond(localReply(text, intent), true);
     }
 
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const reply = payload.choices?.[0]?.message?.content?.trim();
+    const payload = (await response.json()) as unknown;
+    if (!payload || typeof payload !== "object" || !("choices" in payload)) {
+      console.error("Invalid DiffusionGemma response shape:", JSON.stringify(payload).slice(0, 200));
+      return respond(localReply(text, intent), true);
+    }
+    const rec = payload as Record<string, unknown>;
+    const choices = Array.isArray(rec.choices) ? rec.choices : [];
+    const first = choices[0] as Record<string, unknown> | undefined;
+    const message = first?.message as Record<string, unknown> | undefined;
+    const reply = typeof message?.content === "string" ? message.content.trim() : "";
     return respond(reply || localReply(text, intent), !reply);
   } catch (cause) {
     console.error("DiffusionGemma request failed", cause);

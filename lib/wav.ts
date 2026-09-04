@@ -26,7 +26,7 @@ function toMono(buffer: AudioBuffer): Float32Array {
 
 /** Linear-interpolation resampler — good enough for speech, and dependency free. */
 function resample(input: Float32Array, from: number, to: number): Float32Array {
-  if (from === to) return input;
+  if (from === to || from <= 0 || to <= 0) return input.slice();
 
   const ratio = from / to;
   const length = Math.round(input.length / ratio);
@@ -57,13 +57,13 @@ export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   view.setUint32(4, 36 + samples.length * 2, true);
   writeString(8, "WAVE");
   writeString(12, "fmt ");
-  view.setUint32(16, 16, true); // PCM chunk size
-  view.setUint16(20, 1, true); // format: PCM
-  view.setUint16(22, 1, true); // channels: mono
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // byte rate
-  view.setUint16(32, 2, true); // block align
-  view.setUint16(34, 16, true); // bits per sample
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
   writeString(36, "data");
   view.setUint32(40, samples.length * 2, true);
 
@@ -74,7 +74,7 @@ export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
     offset += 2;
   }
 
-  return new Blob([view], { type: "audio/wav" });
+  return new Blob([new Uint8Array(buffer)], { type: "audio/wav" });
 }
 
 /** Decode an arbitrary recorded blob into a 16 kHz mono 16-bit WAV blob. */
@@ -82,7 +82,10 @@ export async function toWav16kMono(recorded: Blob): Promise<Blob> {
   const arrayBuffer = await recorded.arrayBuffer();
   const AudioCtx =
     window.AudioContext ??
-    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+  if (!AudioCtx) throw new Error("AudioContext not supported in this browser.");
+
   const context = new AudioCtx();
 
   try {
