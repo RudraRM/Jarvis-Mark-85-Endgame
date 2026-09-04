@@ -17,6 +17,23 @@ interface UseVoiceOptions {
 
 const SILENCE_FLOOR = 0.045;
 
+function getSafariVersion(): number | null {
+  if (typeof navigator === "undefined") return null;
+  const match = navigator.userAgent.match(/Version\/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function getMediaRecorderError(): string | null {
+  if (typeof window === "undefined" || !window.MediaRecorder) {
+    const safariVersion = getSafariVersion();
+    if (safariVersion !== null && safariVersion < 14) {
+      return `Safari ${safariVersion} does not support voice input. Please upgrade to Safari 14.1 or later, or use Chrome/Firefox/Edge instead.`;
+    }
+    return "Your browser does not support microphone recording. Please use Chrome, Firefox, Safari 14.1+, or Edge.";
+  }
+  return null;
+}
+
 /**
  * Microphone capture + NVIDIA Parakeet transcription.
  *
@@ -92,6 +109,13 @@ export function useVoice({ onTranscript, onStatus, silenceMs = 1800 }: UseVoiceO
   const start = useCallback(async () => {
     if (status === "listening" || status === "transcribing") return;
     setError(null);
+
+    const recorderError = getMediaRecorderError();
+    if (recorderError) {
+      setStatus("error");
+      setError(recorderError);
+      return;
+    }
 
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setStatus("error");
