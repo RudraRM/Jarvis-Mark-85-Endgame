@@ -19,15 +19,20 @@ const SILENCE_FLOOR = 0.045;
 
 function getSafariVersion(): number | null {
   if (typeof navigator === "undefined") return null;
-  const match = navigator.userAgent.match(/Version\/(\d+)/);
-  return match ? parseInt(match[1], 10) : null;
+  const match = navigator.userAgent.match(/Version\/(\d+)\.(\d+)/);
+  if (!match) return null;
+  const major = parseInt(match[1], 10);
+  const minor = parseInt(match[2], 10);
+  return major * 10 + minor;
 }
 
 function getMediaRecorderError(): string | null {
   if (typeof window === "undefined" || !window.MediaRecorder) {
     const safariVersion = getSafariVersion();
-    if (safariVersion !== null && safariVersion < 14) {
-      return `Safari ${safariVersion} does not support voice input. Please upgrade to Safari 14.1 or later, or use Chrome/Firefox/Edge instead.`;
+    if (safariVersion !== null && safariVersion < 141) {
+      const major = Math.floor(safariVersion / 10);
+      const minor = safariVersion % 10;
+      return `Safari ${major}.${minor} does not support voice input. Please upgrade to Safari 14.1 or later, or use Chrome/Firefox/Edge instead.`;
     }
     return "Your browser does not support microphone recording. Please use Chrome, Firefox, Safari 14.1+, or Edge.";
   }
