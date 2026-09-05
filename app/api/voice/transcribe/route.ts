@@ -76,17 +76,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ text, model: "simulated-parakeet", degraded: true });
   }
 
-  const upstream = new FormData();
-  // The audio arrives already normalised to 16 kHz mono 16-bit PCM WAV.
-  upstream.append("file", audio, "speech.wav");
-  upstream.append("model", ASR_MODEL);
-  upstream.append("language", "en-US");
-  upstream.append("response_format", "json");
-
   try {
+    const buffer = await audio.arrayBuffer();
+    const upstream = new FormData();
+    // The audio arrives already normalised to 16 kHz mono 16-bit PCM WAV.
+    upstream.append("file", new Blob([buffer], { type: "audio/wav" }), "speech.wav");
+    upstream.append("model", ASR_MODEL);
+    upstream.append("language", "en-US");
+    upstream.append("response_format", "json");
+
     const response = await fetch(ASR_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      headers: { Authorization: `Bearer ${apiKey}` },
       body: upstream,
       cache: "no-store",
     });
