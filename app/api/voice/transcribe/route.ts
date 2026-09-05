@@ -87,7 +87,10 @@ export async function POST(request: Request) {
 
     const response = await fetch(ASR_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Accept": "application/json"
+      },
       body: upstream,
       cache: "no-store",
     });
