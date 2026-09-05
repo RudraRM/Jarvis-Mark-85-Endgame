@@ -87,7 +87,19 @@ export async function POST(request: Request) {
       return respond(localReply(text, intent), true);
     }
 
-    const payload = (await response.json()) as unknown;
+    let payload: unknown;
+    try {
+      const text = await response.text();
+      if (!text.trim().startsWith("{")) {
+        console.error("DiffusionGemma returned non-JSON:", text.slice(0, 200));
+        return respond(localReply(text, intent), true);
+      }
+      payload = JSON.parse(text);
+    } catch (e) {
+      console.error("Failed to parse DiffusionGemma response:", e);
+      return respond(localReply(text, intent), true);
+    }
+
     if (!payload || typeof payload !== "object" || !("choices" in payload)) {
       console.error("Invalid DiffusionGemma response shape:", JSON.stringify(payload).slice(0, 200));
       return respond(localReply(text, intent), true);
