@@ -7,44 +7,13 @@ import { toWav16kMono } from "./wav";
 export type VoiceStatus = "idle" | "listening" | "transcribing" | "error";
 
 interface UseVoiceOptions {
-  /** Receives the final Parakeet transcript once a phrase completes. */
   onTranscript: (result: TranscriptResult) => void;
-  /** Narration sink for the screen-reader live region. */
   onStatus?: (message: string) => void;
-  /** Auto-stop after this many ms below the silence floor. */
   silenceMs?: number;
 }
 
 const SILENCE_FLOOR = 0.045;
 
-function getSafariVersion(): number | null {
-  if (typeof navigator === "undefined") return null;
-  const match = navigator.userAgent.match(/Version\/(\d+)\.(\d+)/);
-  if (!match) return null;
-  const major = parseInt(match[1], 10);
-  const minor = parseInt(match[2], 10);
-  return major * 10 + minor;
-}
-
-function getMediaRecorderError(): string | null {
-  if (typeof window === "undefined" || !window.MediaRecorder) {
-    const safariVersion = getSafariVersion();
-    if (safariVersion !== null && safariVersion < 141) {
-      const major = Math.floor(safariVersion / 10);
-      const minor = safariVersion % 10;
-      return `Safari ${major}.${minor} does not support voice input. Please upgrade to Safari 14.1 or later, or use Chrome/Firefox/Edge instead.`;
-    }
-    return "Your browser does not support microphone recording. Please use Chrome, Firefox, Safari 14.1+, or Edge.";
-  }
-  return null;
-}
-
-/**
- * Microphone capture + NVIDIA Parakeet transcription.
- *
- * The analyser node feeds `amplitudeRef` every animation frame so the 3D core
- * can pulse with the voice without triggering a React render per sample.
- */
 export function useVoice({ onTranscript, onStatus, silenceMs = 1800 }: UseVoiceOptions) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -59,48 +28,61 @@ export function useVoice({ onTranscript, onStatus, silenceMs = 1800 }: UseVoiceO
   const silenceSince = useRef<number | null>(null);
   const stoppingRef = useRef(false);
 
-  const teardown = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
+  const cleanup = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
     silenceSince.current = null;
     amplitudeRef.current = 0;
 
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
     analyserRef.current = null;
 
-    const context = contextRef.current;
-    contextRef.current = null;
-    if (context && context.state !== "closed") void context.close();
+    const ctx = contextRef.current;
+    if (ctx) {
+      contextRef.current = null;
+      if (ctx.state !== "closed") {
+        void ctx.close();
+      }
+    }
   }, []);
 
-  useEffect(() => teardown, [teardown]);
+  useEffect(() => {
+    return () => cleanup();
+  }, [cleanup]);
 
-  const stop = useCallback(() => {
+  const stopRecording = useCallback(() => {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state === "inactive" || stoppingRef.current) return;
     stoppingRef.current = true;
     recorder.stop();
   }, []);
 
-  /** Poll the analyser for an RMS envelope and drive silence detection. */
   const startMeter = useCallback(() => {
     const analyser = analyserRef.current;
     if (!analyser) return;
+
     const buffer = new Float32Array(analyser.fftSize);
 
     const tick = () => {
       analyser.getFloatTimeDomainData(buffer);
       let sum = 0;
-      for (let i = 0; i < buffer.length; i += 1) sum += buffer[i] * buffer[i];
+      for (let i = 0; i < buffer.length; i++) {
+        sum += buffer[i] * buffer[i];
+      }
       const rms = Math.sqrt(sum / buffer.length);
-      // Perceptual-ish curve so quiet speech still moves the core.
       amplitudeRef.current = Math.min(1, Math.pow(rms * 6.5, 0.75));
 
       const now = performance.now();
       if (amplitudeRef.current < SILENCE_FLOOR) {
         silenceSince.current ??= now;
-        if (now - silenceSince.current > silenceMs) stop();
+        if (now - silenceSince.current > silenceMs) {
+          stopRecording();
+        }
       } else {
         silenceSince.current = null;
       }
@@ -109,52 +91,40 @@ export function useVoice({ onTranscript, onStatus, silenceMs = 1800 }: UseVoiceO
     };
 
     rafRef.current = requestAnimationFrame(tick);
-  }, [silenceMs, stop]);
+  }, [silenceMs, stopRecording]);
 
   const start = useCallback(async () => {
     if (status === "listening" || status === "transcribing") return;
     setError(null);
 
-    const recorderError = getMediaRecorderError();
-    if (recorderError) {
+    if (!navigator.mediaDevices?.getUserMedia) {
       setStatus("error");
-      setError(recorderError);
+      setError("Microphone access is not supported in this browser.");
       return;
     }
 
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    if (!window.MediaRecorder) {
       setStatus("error");
-      setError("Microphone capture is unavailable in this browser.");
+      setError("MediaRecorder is not supported. Please use a modern browser (Chrome, Firefox, Safari 14.1+, or Edge).");
       return;
     }
 
     try {
-      let stream: MediaStream | null = null;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-        });
-      } catch (micError) {
-        teardown();
-        setStatus("error");
-        setError(
-          micError instanceof Error && micError.name === "NotAllowedError"
-            ? "Microphone permission denied."
-            : "Could not open the microphone."
-        );
-        return;
-      }
-      if (!stream) throw new Error("Failed to get media stream.");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+
       streamRef.current = stream;
 
-      const AudioCtx =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) {
-        teardown();
+        stream.getTracks().forEach((t) => t.stop());
         setStatus("error");
-        setError("AudioContext not supported in this browser.");
+        setError("AudioContext is not supported in this browser.");
         return;
       }
 
@@ -167,48 +137,62 @@ export function useVoice({ onTranscript, onStatus, silenceMs = 1800 }: UseVoiceO
       context.createMediaStreamSource(stream).connect(analyser);
       analyserRef.current = analyser;
 
-      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(
-        (candidate) => MediaRecorder.isTypeSupported?.(candidate),
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) =>
+        MediaRecorder.isTypeSupported?.(type)
       );
+
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorderRef.current = recorder;
       chunksRef.current = [];
       stoppingRef.current = false;
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
       };
 
       recorder.onstop = async () => {
-        const recorded = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const audioBlob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         chunksRef.current = [];
-        teardown();
+        cleanup();
         stoppingRef.current = false;
 
-        if (recorded.size < 2048) {
+        if (audioBlob.size < 2048) {
           setStatus("idle");
-          onStatus?.("No speech captured.");
+          onStatus?.("No speech detected.");
           return;
         }
 
         setStatus("transcribing");
-        onStatus?.("Transcribing with NVIDIA Parakeet.");
+        onStatus?.("Sending audio to Parakeet...");
 
         try {
-          const wav = await toWav16kMono(recorded);
-          const body = new FormData();
-          body.append("audio", wav, "speech.wav");
+          const wav = await toWav16kMono(audioBlob);
+          const formData = new FormData();
+          formData.append("audio", wav, "speech.wav");
 
-          const response = await fetch("/api/voice/transcribe", { method: "POST", body });
-          const payload = (await response.json()) as TranscriptResult & { error?: string };
-          if (!response.ok) throw new Error(payload.error || "Transcription failed.");
+          const response = await fetch("/api/voice/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+
+          const result = (await response.json()) as any;
+
+          if (!response.ok) {
+            throw new Error(result.error || "Transcription failed");
+          }
 
           setStatus("idle");
-          if (payload.text.trim()) onTranscript(payload);
-          else onStatus?.("Parakeet returned no speech.");
-        } catch (cause) {
+          if (result.text?.trim()) {
+            onTranscript(result);
+          } else {
+            onStatus?.("No speech recognized.");
+          }
+        } catch (err) {
           setStatus("error");
-          setError(cause instanceof Error ? cause.message : "Transcription failed.");
+          const message = err instanceof Error ? err.message : "Transcription failed";
+          setError(message);
         }
       };
 
@@ -216,21 +200,31 @@ export function useVoice({ onTranscript, onStatus, silenceMs = 1800 }: UseVoiceO
       setStatus("listening");
       onStatus?.("Listening. Speak now.");
       startMeter();
-    } catch (cause) {
-      teardown();
+    } catch (err) {
+      cleanup();
       setStatus("error");
-      setError(
-        cause instanceof Error && cause.name === "NotAllowedError"
-          ? "Microphone permission denied."
-          : "Could not open the microphone.",
-      );
+
+      if (err instanceof DOMException) {
+        if (err.name === "NotAllowedError") {
+          setError("Microphone permission was denied. Please allow microphone access in browser settings.");
+        } else if (err.name === "NotFoundError") {
+          setError("No microphone device found. Please connect a microphone.");
+        } else {
+          setError(`Microphone error: ${err.message}`);
+        }
+      } else {
+        setError("Could not access microphone.");
+      }
     }
-  }, [onStatus, onTranscript, startMeter, status, teardown]);
+  }, [status, startMeter, cleanup, onStatus, onTranscript]);
 
   const toggle = useCallback(() => {
-    if (status === "listening") stop();
-    else void start();
-  }, [start, status, stop]);
+    if (status === "listening") {
+      stopRecording();
+    } else {
+      void start();
+    }
+  }, [status, start, stopRecording]);
 
-  return { status, error, amplitudeRef, start, stop, toggle };
+  return { status, error, amplitudeRef, start, stop: stopRecording, toggle };
 }
