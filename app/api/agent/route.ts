@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
     ...(body.history ?? [])
-      .slice(-6)
+      .slice(-2)
       .map((turn) => ({ role: turn.role, content: turn.text })),
     {
       role: "user",
