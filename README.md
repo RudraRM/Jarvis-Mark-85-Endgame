@@ -18,8 +18,10 @@ Then open http://localhost:3000.
 
 The app runs with **no credentials at all** — the ASR and LLM routes fall back to a
 local simulation and the HUD flags itself as `NIM CREDENTIALS ABSENT · LOCAL FALLBACK
-ACTIVE`. To go live, copy `.env.example` to `.env.local` and set `NVIDIA_API_KEY`
-(plus any endpoint overrides if you run your own NIM docker node).
+ACTIVE`. To go live, see the [NIM Setup Guide](docs/NIM_SETUP.md) for detailed instructions
+on setting up NVIDIA NIM, generating an API key, and running the Docker container. Once configured,
+copy `.env.example` to `.env.local` and set `NVIDIA_API_KEY` (plus any endpoint overrides if you
+run your own NIM docker node).
 
 ## What's wired up
 
