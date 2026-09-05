@@ -3,10 +3,12 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const ASR_MODEL = process.env.ASR_MODEL ?? "whisper-1";
+const ASR_URL =
+  process.env.NVIDIA_ASR_URL ?? "https://ai.nvidia.com/api/v1/audio/transcriptions";
+const ASR_MODEL = process.env.ASR_MODEL ?? "openai/whisper-large";
+const API_KEY = process.env.NVIDIA_API_KEY;
 
-/** Offline demo phrases used when no OpenAI key is configured. */
+/** Offline demo phrases used when no API key is configured. */
 const SIMULATED = [
   "Jarvis, run a full diagnostic on the reactor core.",
   "Spin up the core and switch to combat glow.",
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!OPENAI_API_KEY || OPENAI_API_KEY.includes("Paste Api Key")) {
+  if (!API_KEY || API_KEY.includes("Paste Api Key")) {
     // Keep the whole pipeline demoable without credentials.
     const text = SIMULATED[Math.floor(Math.random() * SIMULATED.length)];
     return NextResponse.json({ text, model: "simulated-whisper", degraded: true });
@@ -51,10 +53,10 @@ export async function POST(request: Request) {
     formData.append("model", ASR_MODEL);
     formData.append("language", "en");
 
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    const response = await fetch(ASR_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${API_KEY}`,
       },
       body: formData,
       cache: "no-store",
