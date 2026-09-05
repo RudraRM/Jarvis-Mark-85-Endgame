@@ -17,11 +17,9 @@ npm run dev
 Then open http://localhost:3000.
 
 The app runs with **no credentials at all** — the ASR and LLM routes fall back to a
-local simulation and the HUD flags itself as `NIM CREDENTIALS ABSENT · LOCAL FALLBACK
-ACTIVE`. To go live, see the [NIM Setup Guide](docs/NIM_SETUP.md) for detailed instructions
-on setting up NVIDIA NIM, generating an API key, and running the Docker container. Once configured,
-copy `.env.example` to `.env.local` and set `NVIDIA_API_KEY` (plus any endpoint overrides if you
-run your own NIM docker node).
+local simulation. To enable voice transcription and text-to-speech, see the [OpenAI API Setup Guide](docs/NIM_SETUP.md) for detailed instructions
+on configuring your OpenAI API key. Copy `.env.example` to `.env.local` and set `OPENAI_API_KEY`
+with your OpenAI API key from https://platform.openai.com/account/api-keys.
 
 ## What's wired up
 
@@ -45,9 +43,14 @@ run your own NIM docker node).
   render, so the sync stays frame-accurate.
 - Recording auto-stops after ~1.8 s below the silence floor.
 - The recorded blob is decoded and re-encoded client-side into **16 kHz mono 16-bit
-  PCM WAV** (`lib/wav.ts`) — the container `parakeet-ctc-1.1b-asr` wants — then POSTed
-  to the API route, which wraps the NVIDIA bearer token server-side and normalises
-  both the OpenAI-compatible and Riva-style response shapes.
+  PCM WAV** (`lib/wav.ts`) — OpenAI's Whisper model wants — then POSTed
+  to the API route, which wraps the OpenAI bearer token server-side.
+
+### Text-to-Speech — `app/api/voice/speak/route.ts`
+
+- Agent responses are sent to OpenAI's TTS API
+- Returns audio in MP3 format that plays automatically through your system speakers
+- Configurable voice: alloy (default), echo, fable, onyx, nova, or shimmer
 
 ### Hermes "Web Fish" agent — `lib/hermes.ts` → `app/api/agent/route.ts`
 
@@ -94,5 +97,5 @@ honest if the user leaves with `Esc`.
 ## Stack
 
 Next.js 14 (App Router) · React 18 · Tailwind CSS · Framer Motion · Three.js via
-React Three Fiber + drei + postprocessing · NVIDIA NIM (Parakeet CTC 1.1B ASR,
-DiffusionGemma 26B).
+React Three Fiber + drei + postprocessing · OpenAI APIs (Whisper v3 ASR,
+TTS-1 Text-to-Speech) · DiffusionGemma 26B (optional LLM).

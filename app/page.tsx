@@ -105,6 +105,29 @@ export default function Page() {
     [pushLog],
   );
 
+  /** Speak the text using text-to-speech. */
+  const speakText = useCallback(async (text: string) => {
+    try {
+      const response = await fetch("/api/voice/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!response.ok) {
+        console.warn("TTS request failed:", response.status);
+        return;
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.play().catch((err) => console.warn("Audio playback failed:", err));
+    } catch (err) {
+      console.warn("Text-to-speech error:", err);
+    }
+  }, []);
+
   /** Send an utterance through the Hermes agent loop. */
   const dispatch = useCallback(
     async (text: string) => {
@@ -124,7 +147,7 @@ export default function Page() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             text: clean,
-            history: turnsRef.current.slice(-6).map(({ role, text: body }) => ({ role, text: body })),
+            history: turnsRef.current.slice(-2).map(({ role, text: body }) => ({ role, text: body })),
           }),
         });
         const payload = (await response.json()) as AgentResponse & { error?: string };
@@ -136,6 +159,11 @@ export default function Page() {
           ...previous,
           { id: uid(), role: "assistant", text: payload.reply, animate: true },
         ]);
+
+        // Speak the agent's response
+        if (payload.reply) {
+          void speakText(payload.reply);
+        }
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Agent request failed.";
         pushLog(`AGENT ERROR · ${message}`, "crit");
@@ -144,7 +172,7 @@ export default function Page() {
         setThinking(false);
       }
     },
-    [applyCommands, pushLog],
+    [applyCommands, pushLog, speakText],
   );
 
   const onTranscript = useCallback(
