@@ -64,6 +64,7 @@ export async function POST(request: Request) {
 
     const raw = await response.text();
     if (!response.ok) {
+      console.error(`Whisper API error ${response.status}:`, raw.slice(0, 500));
       return NextResponse.json(
         { error: `Whisper API responded ${response.status}: ${raw.slice(0, 400)}` },
         { status: 502 },
@@ -73,9 +74,11 @@ export async function POST(request: Request) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
-    } catch {
+    } catch (parseError) {
+      console.error("Failed to parse Whisper response. Raw response:", raw.slice(0, 500));
+      console.error("Parse error:", parseError);
       return NextResponse.json(
-        { error: "Failed to parse Whisper response" },
+        { error: `Failed to parse Whisper response: ${raw.slice(0, 200)}` },
         { status: 502 },
       );
     }
